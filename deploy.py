@@ -12,9 +12,12 @@ def main():
 
 def process_args():
     arg_parser = argparse.ArgumentParser(description='deploy.py')
-    arg_parser.add_argument('dest_git_root',
+    arg_parser.add_argument('host_address',
                             action='store',
-                            help='The remote git repository. Including hostname and file path')
+                            help='The remote hostname and address of git repository')
+    arg_parser.add_argument('git_root_path',
+                            action='store',
+                            help='The path of remote git repository.')
     arg_parser.add_argument('--method',
                             action='store',
                             default='scp',
@@ -32,10 +35,17 @@ def process_args():
 def deploy_code(staged_file, args):
     tag, filename = staged_file.split('  ')
     if tag is 'R':
-        filename = filename.split('->')[1].strip()
+        old_filename, filename = filename.split(' -> ')
+        print 'Replace ' + old_filename + ' with ' + filename
+        call(['ssh',
+              args.host_address,
+              '-p', args.port,
+              'mv ' + args.git_root_path + old_filename + ' ' + args.git_root_path + filename])
+        return None
     if args.method is 'scp':
-        print 'scp ' + filename + ' to ' + args.dest_git_root
-        call(['scp', '-P', args.port , filename, args.dest_git_root + filename])
+        print 'scp ' + filename + ' to ' + args.git_root_path
+        call(['scp', '-P', args.port , filename, args.host_address + ':' + args.git_root_path + filename])
+    return None
 
 
 
