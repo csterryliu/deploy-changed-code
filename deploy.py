@@ -38,39 +38,43 @@ def process_args():
 
 def deploy_code(staged_file, args):
     tag, filename = staged_file.split('  ')
+    permission = 0
     if tag is 'R':
-        old_filename, filename = filename.split(' -> ')
-        if args.force:
-            ls_output = check_output(['ssh',
-                          args.host_address,
-                          '-p', args.port,
-                          'ls -al ' + args.git_root_path + filename])
-            permission, _, _ = ls_parser(ls_output)
-            original_permission = permission_parser(permission)
-            #call(['ssh',
-            #      args.host_address,
-            #      '-p', args.port,
-            #      'sudo chmod 777 ' + args.git_root_path + old_filename])
-        print 'Replace ' + old_filename + ' with ' + filename
+        filename, new_filename = filename.split(' -> ')
+    if args.force and tag is not 'A':
+        ls_output = check_output(['ssh',
+                      args.host_address,
+                      '-p', args.port,
+                      'ls -al ' + args.git_root_path + filename])
+        permission, _, _ = ls_parser(ls_output)
+        permission = permission_parser(permission)
+        change_file_permission(args.host_address,
+                               args.port,
+                               args.git_root_path,
+                               filename, '777')
+    if tag is 'R':
+        prefix_sudo = 'sudo su - -c '
+        print 'Rename ' + filename + ' to ' + new_filename
         call(['ssh',
               args.host_address,
               '-p', args.port,
-              'mv ' + args.git_root_path + old_filename + ' ' + args.git_root_path + filename])
-        #if args.force:
-            #call(['ssh',
-            #      args.host_address,
-            #      '-p', args.port,
-            #      'sudo chmod ' + original_permission  + ' ' + args.git_root_path + old_filename])
-        return None
-    if args.method == 'scp':
-        print 'scp ' + filename + ' to ' + args.git_root_path
-        call(['scp', '-P', args.port , filename, args.host_address + ':' + args.git_root_path + filename])
-    elif args.method == 'rsync':
-        print 'rsync ' + filename + ' to ' + args.git_root_path
-        call(['rsync', '-ave', 'ssh -p ' + args.port , filename, args.host_address + ':' + args.git_root_path + filename])
+              '-t',
+              prefix_sudo + '"mv ' + args.git_root_path + filename + ' ' + args.git_root_path + new_filename +'"'])
+        filename = new_filename
     else:
-        print 'Unsupported method'
-    return None
+        if args.method == 'scp':
+            print 'scp ' + filename + ' to ' + args.git_root_path
+            call(['scp', '-P', args.port , filename, args.host_address + ':' + args.git_root_path + filename])
+        elif args.method == 'rsync':
+            print 'rsync ' + filename + ' to ' + args.git_root_path
+            call(['rsync', '-ave', 'ssh -p ' + args.port , filename, args.host_address + ':' + args.git_root_path + filename])
+        else:
+            print 'Unsupported method'
+    if args.force:
+        change_file_permission(args.host_address,
+                               args.port,
+                               args.git_root_path,
+                               filename, str(permission))
 
 def ls_parser(ls_output):
     permission, _, owner, group, _, _, _, _, _, _ = regx_split('\s+', ls_output)
@@ -92,6 +96,12 @@ def permission_parser(permission_str):
         permission += permission_map[permission_str[i]]
     return permission
 
+def change_file_permission(host_address, port, git_root_path, filename, permission_str):
+    call(['ssh',
+          host_address,
+          '-p', port,
+          '-t',
+          'sudo su - -c "chmod ' + permission_str + ' ' + git_root_path + filename + '"'])
 
 if __name__ == '__main__':
     main()
