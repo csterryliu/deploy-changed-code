@@ -39,50 +39,73 @@ def process_args():
 
 
 def deploy_code(staged_file, args):
-    if staged_file.startswith('MM') or staged_file.startswith(' M'):
+    if staged_file.startswith('MM') or staged_file.startswith(' '):
         print('Please. Stage your file correctly.')
         return False
-
-    tag, filename = staged_file.split('  ')
-    permission = 0
-    if tag is 'R':
-        filename, new_filename = filename.split(' -> ')
-    if args.force and tag is not 'A':
-        cmd = create_ssh_command(args.port,
-                                 args.host_address,
-                                 args.public_key,
-                                 False,
-                                 'ls -al ' + args.git_root_path + filename)
-        ls_output = check_output(cmd)
-        permission, _, _ = ls_parser(ls_output)
-        permission = permission_parser(permission)
-        change_file_permission(args.host_address,
-                               args.port,
-                               args.git_root_path,
-                               filename, '777', args.public_key)
-    if tag is 'R':
-        prefix_sudo = 'sudo su - -c '
-        print 'Rename ' + filename + ' to ' + new_filename
-        cmd = create_ssh_command(args.port,
-                                 args.host_address,
-                                 args.public_key,
-                                 True,
-                                 prefix_sudo + '"mv ' + args.git_root_path + filename + ' ' + args.git_root_path + new_filename +'"')
-        call(cmd)
-        filename = new_filename
-    else:
-        print 'scp ' + filename + ' to ' + args.git_root_path
-        scp(args.port,
-            filename,
-            args.host_address + ':' + args.git_root_path + filename,
-            args.public_key)
-    if args.force:
-        change_file_permission(args.host_address,
-                               args.port,
-                               args.git_root_path,
-                               filename, str(permission), args.public_key)
-
+    if staged_file.startswith('R'):
+        filename, new_filename = staged_file.split('  ')[1].split(' -> ')
+        deal_with_renaming(args, filename, new_filename)
+    elif staged_file.startswith('M') or staged_file.startswith('A'):
+        action, filename = staged_file.split('  ')
+        deal_with_modification_and_add(args, filename, action)
     return True
+
+def deal_with_renaming(args, filename, new_filename):
+    prefix_sudo = ''
+    should_recover_permission = False
+    if args.force:
+        original_permission = seize_file_control(args, filename)
+        prefix_sudo = 'sudo su - -c '
+        should_recover_permission = True
+    print 'Rename ' + filename + ' to ' + new_filename
+    cmd = create_ssh_command(args.port,
+                             args.host_address,
+                             args.public_key,
+                             True,
+                             prefix_sudo + '"mv ' + args.git_root_path + filename + ' ' + args.git_root_path + new_filename +'"')
+    call(cmd)
+    filename = new_filename
+
+    if should_recover_permission:
+        change_file_permission(args.host_address,
+                               args.port,
+                               args.git_root_path,
+                               filename, str(original_permission),
+                               args.public_key)
+
+def deal_with_modification_and_add(args, filename, action):
+    should_recover_permission = False
+    if action is not 'A' and args.force:
+        original_permission = seize_file_control(args, filename)
+        should_recover_permission = True
+    print 'scp ' + filename + ' to ' + args.git_root_path
+    scp(args.port,
+        filename,
+        args.host_address + ':' + args.git_root_path + filename,
+        args.public_key)
+    if should_recover_permission:
+        change_file_permission(args.host_address,
+                               args.port,
+                               args.git_root_path,
+                               filename, str(original_permission),
+                               args.public_key)
+
+
+def seize_file_control(args, filename):
+    permission = 0
+    cmd = create_ssh_command(args.port,
+                             args.host_address,
+                             args.public_key,
+                             False,
+                             'ls -al ' + args.git_root_path + filename)
+    ls_output = check_output(cmd)
+    permission, _, _ = ls_parser(ls_output)
+    permission = permission_parser(permission)
+    change_file_permission(args.host_address,
+                           args.port,
+                           args.git_root_path,
+                           filename, '777', args.public_key)
+    return permission
 
 def ls_parser(ls_output):
     permission, _, owner, group, _, _, _, _, _, _ = regx_split('\s+', ls_output)
