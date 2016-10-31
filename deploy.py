@@ -9,7 +9,9 @@ def main():
     filelist = output.split('\n')
     for staged_file in filelist:
         if staged_file:
-            deploy_code(staged_file, args)
+            if not deploy_code(staged_file, args):
+                print('An error occurs. Going out.')
+                return
 
 def process_args():
     arg_parser = argparse.ArgumentParser(description='deploy.py')
@@ -19,11 +21,6 @@ def process_args():
     arg_parser.add_argument('git_root_path',
                             action='store',
                             help='The path of remote git repository.')
-    arg_parser.add_argument('--method',
-                            action='store',
-                            default='scp',
-                            metavar='Program for transmission',
-                            help='The program which will do the transmission. Default is scp.')
     arg_parser.add_argument('--port',
                             action='store',
                             default='22',
@@ -42,6 +39,10 @@ def process_args():
 
 
 def deploy_code(staged_file, args):
+    if staged_file.startswith('MM') or staged_file.startswith(' M'):
+        print('Please. Stage your file correctly.')
+        return False
+
     tag, filename = staged_file.split('  ')
     permission = 0
     if tag is 'R':
@@ -68,32 +69,20 @@ def deploy_code(staged_file, args):
                                  True,
                                  prefix_sudo + '"mv ' + args.git_root_path + filename + ' ' + args.git_root_path + new_filename +'"')
         call(cmd)
-        #call(['ssh',
-        #      '-i', '/Users/terry/coding/project/keys/terry-keypair-20160920.pem',
-        #      '-p', args.port,
-        #      '-t',
-        #      args.host_address,
-        #      prefix_sudo + '"mv ' + args.git_root_path + filename + ' ' + args.git_root_path + new_filename +'"'])
         filename = new_filename
     else:
-        if args.method == 'scp':
-            print 'scp ' + filename + ' to ' + args.git_root_path
-            scp(args.port,
-                filename,
-                args.host_address + ':' + args.git_root_path + filename,
-                args.public_key)
-            #call(['scp', '-i', '/Users/terry/coding/project/keys/terry-keypair-20160920.pem', '-P', args.port , filename, args.host_address + ':' + args.git_root_path + filename])
-        elif args.method == 'rsync':
-            print 'Deprecated'
-            #print 'rsync ' + filename + ' to ' + args.git_root_path
-            #call(['rsync', '-ave', 'ssh -p ' + args.port , filename, args.host_address + ':' + args.git_root_path + filename])
-        else:
-            print 'Unsupported method'
+        print 'scp ' + filename + ' to ' + args.git_root_path
+        scp(args.port,
+            filename,
+            args.host_address + ':' + args.git_root_path + filename,
+            args.public_key)
     if args.force:
         change_file_permission(args.host_address,
                                args.port,
                                args.git_root_path,
                                filename, str(permission), args.public_key)
+
+    return True
 
 def ls_parser(ls_output):
     permission, _, owner, group, _, _, _, _, _, _ = regx_split('\s+', ls_output)
