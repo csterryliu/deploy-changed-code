@@ -1,5 +1,5 @@
 #!/usr/bin/python
-from subprocess import check_output, call
+from subprocess import check_output, call, CalledProcessError
 from re import split as regx_split
 import argparse
 
@@ -96,28 +96,38 @@ def deal_with_modification(args, filename):
                                args.public_key)
 
 def deal_with_add(args, filename):
-    should_recover_permission = False
-    dirpath = ''
-    if args.force:
-        path_list = filename.rsplit('/', 1)
-        if len(path_list) > 1:
-            dirpath = path_list[0]
-        dir_permission, dir_owner, dir_group = seize_control(args, dirpath, 'd')
-        should_recover_permission = True
-    print 'scp ' + filename + ' to ' + args.git_root_path
-    scp(args.port,
-        filename,
-        args.host_address + ':' + args.git_root_path + filename,
-        args.public_key)
-    change_file_owngrp(args.host_address,
-                           args.port,
-                           args.git_root_path,
-                           filename, dir_owner, dir_group, args.public_key)
-    if should_recover_permission:
-        change_file_permission(args.host_address,
+    try:
+        cmd = create_ssh_command(args.port,
+                                args.host_address,
+                                args.public_key,
+                                False,
+                                'ls ' + args.git_root_path + filename)
+        ls_output = check_output(cmd)
+        print(ls_output.rstrip() + ': already exists.')
+    except CalledProcessError:
+        should_recover_permission = False
+        dirpath = ''
+        if args.force:
+            path_list = filename.rsplit('/', 1)
+            if len(path_list) > 1:
+                dirpath = path_list[0]
+            dir_permission, dir_owner, dir_group = seize_control(args, dirpath, 'd')
+            should_recover_permission = True
+        print 'scp ' + filename + ' to ' + args.git_root_path
+        scp(args.port,
+            filename,
+            args.host_address + ':' + args.git_root_path + filename,
+            args.public_key)
+        change_file_owngrp(args.host_address,
                                args.port,
                                args.git_root_path,
-                               dirpath, str(dir_permission), args.public_key)
+                               filename, dir_owner, dir_group, args.public_key)
+        if should_recover_permission:
+            change_file_permission(args.host_address,
+                                   args.port,
+                                   args.git_root_path,
+                                   dirpath, str(dir_permission), args.public_key)
+
 
 def seize_control(args, target, type_):
     permission = 0
