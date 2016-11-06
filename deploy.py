@@ -62,7 +62,7 @@ def deal_with_renaming(args, filename, new_filename):
         original_permission, _, _ = seize_control(args, filename, 'f')
         prefix_sudo = 'sudo su - -c '
         should_recover_permission = True
-    print 'Rename ' + filename + ' to ' + new_filename
+    print('Rename ' + filename + ' to ' + new_filename)
     cmd = create_ssh_command(args.port,
                              args.host_address,
                              args.public_key,
@@ -83,7 +83,7 @@ def deal_with_modification(args, filename):
     if args.force:
         original_permission, _, _ = seize_control(args, filename, 'f')
         should_recover_permission = True
-    print 'scp ' + filename + ' to ' + args.git_root_path
+    print('scp ' + filename + ' to ' + args.git_root_path)
     scp(args.port,
         filename,
         args.host_address + ':' + args.git_root_path + filename,
@@ -113,7 +113,7 @@ def deal_with_add(args, filename):
                 dirpath = path_list[0]
             dir_permission, dir_owner, dir_group = seize_control(args, dirpath, 'd')
             should_recover_permission = True
-        print 'scp ' + filename + ' to ' + args.git_root_path
+        print('scp ' + filename + ' to ' + args.git_root_path)
         scp(args.port,
             filename,
             args.host_address + ':' + args.git_root_path + filename,
