@@ -17,22 +17,22 @@ def process_args():
     arg_parser = argparse.ArgumentParser(description='deploy.py')
     arg_parser.add_argument('host_address',
                             action='store',
-                            help='The remote hostname and address of git repository')
+                            help='The remote hostname and address. e.g. ubuntu@ip_address')
     arg_parser.add_argument('git_root_path',
                             action='store',
-                            help='The path of remote git repository.')
+                            help='The full path of remote git repository.')
     arg_parser.add_argument('--port',
                             action='store',
                             default='22',
                             metavar='Port Number',
-                            help='The Port Number. Default is 22.')
+                            help='The port number of remote machine. Default is 22.')
     arg_parser.add_argument('--force',
                             action='store_true',
                             help='Force deploy. Bypass the file permission.')
     arg_parser.add_argument('--public_key',
                             action='store',
                             default='',
-                            metavar='The Public Key',
+                            metavar='Public Key',
                             help='The public key for loggin in.')
 
     return arg_parser.parse_args()
@@ -50,7 +50,6 @@ def deploy_code(staged_file, args):
         deal_with_modification(args, filename)
     elif staged_file.startswith('A'):
         _, filename = staged_file.split('  ')
-        print('dealing: %s' % filename)
         deal_with_add(args, filename)
     else:
         print('Unsupported action. Pass.')
@@ -103,11 +102,17 @@ def deal_with_add(args, filename):
         path_list = filename.rsplit('/', 1)
         if len(path_list) > 1:
             dirpath = path_list[0]
-        print(dirpath)
         dir_permission, dir_owner, dir_group = seize_control(args, dirpath, 'd')
-        print(dir_permission, dir_owner, dir_group)
         should_recover_permission = True
-
+    print 'scp ' + filename + ' to ' + args.git_root_path
+    scp(args.port,
+        filename,
+        args.host_address + ':' + args.git_root_path + filename,
+        args.public_key)
+    change_file_owngrp(args.host_address,
+                           args.port,
+                           args.git_root_path,
+                           filename, dir_owner, dir_group, args.public_key)
     if should_recover_permission:
         change_file_permission(args.host_address,
                                args.port,
@@ -123,8 +128,6 @@ def seize_control(args, target, type_):
     else:
         print('Unsupported Type')
         # TODO Raise exception...
-    print('ls cmd: %s' % ls_cmd)
-    print('target: %s' % target)
     cmd = create_ssh_command(args.port,
                              args.host_address,
                              args.public_key,
@@ -165,6 +168,14 @@ def change_file_permission(host_address, port, git_root_path, filename, permissi
                              public_key,
                              True,
                              'sudo su - -c "chmod ' + permission_str + ' ' + git_root_path + filename + '"')
+    call(cmd)
+
+def change_file_owngrp(host_address, port, git_root_path, filename, own_str, grp_str, public_key):
+    cmd = create_ssh_command(port,
+                             host_address,
+                             public_key,
+                             True,
+                             'sudo su - -c "chown ' + own_str + ':' + grp_str + ' ' + git_root_path + filename + '"')
     call(cmd)
 
 def create_ssh_command(port, host_address, public_key, is_sudo, command):
