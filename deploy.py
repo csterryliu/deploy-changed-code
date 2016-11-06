@@ -40,21 +40,27 @@ def process_args():
 
 def deploy_code(staged_file, args):
     if staged_file.startswith('MM') or staged_file.startswith(' '):
-        print('Please. Stage your file correctly.')
+        print('Please, stage your file correctly.')
         return False
     if staged_file.startswith('R'):
         filename, new_filename = staged_file.split('  ')[1].split(' -> ')
         deal_with_renaming(args, filename, new_filename)
-    elif staged_file.startswith('M') or staged_file.startswith('A'):
-        action, filename = staged_file.split('  ')
-        deal_with_modification_and_add(args, filename, action)
+    elif staged_file.startswith('M'):
+        _, filename = staged_file.split('  ')
+        deal_with_modification(args, filename)
+    elif staged_file.startswith('A'):
+        _, filename = staged_file.split('  ')
+        print('dealing: %s' % filename)
+        deal_with_add(args, filename)
+    else:
+        print('Unsupported action. Pass.')
     return True
 
 def deal_with_renaming(args, filename, new_filename):
     prefix_sudo = ''
     should_recover_permission = False
     if args.force:
-        original_permission = seize_file_control(args, filename)
+        original_permission, _, _ = seize_control(args, filename, 'f')
         prefix_sudo = 'sudo su - -c '
         should_recover_permission = True
     print 'Rename ' + filename + ' to ' + new_filename
@@ -73,10 +79,10 @@ def deal_with_renaming(args, filename, new_filename):
                                filename, str(original_permission),
                                args.public_key)
 
-def deal_with_modification_and_add(args, filename, action):
+def deal_with_modification(args, filename):
     should_recover_permission = False
-    if action is not 'A' and args.force:
-        original_permission = seize_file_control(args, filename)
+    if args.force:
+        original_permission, _, _ = seize_control(args, filename, 'f')
         should_recover_permission = True
     print 'scp ' + filename + ' to ' + args.git_root_path
     scp(args.port,
@@ -90,22 +96,48 @@ def deal_with_modification_and_add(args, filename, action):
                                filename, str(original_permission),
                                args.public_key)
 
+def deal_with_add(args, filename):
+    should_recover_permission = False
+    dirpath = ''
+    if args.force:
+        path_list = filename.rsplit('/', 1)
+        if len(path_list) > 1:
+            dirpath = path_list[0]
+        print(dirpath)
+        dir_permission, dir_owner, dir_group = seize_control(args, dirpath, 'd')
+        print(dir_permission, dir_owner, dir_group)
+        should_recover_permission = True
 
-def seize_file_control(args, filename):
+    if should_recover_permission:
+        change_file_permission(args.host_address,
+                               args.port,
+                               args.git_root_path,
+                               dirpath, str(dir_permission), args.public_key)
+
+def seize_control(args, target, type_):
     permission = 0
+    if type_ is 'f':
+        ls_cmd = 'ls -al ' + args.git_root_path + target
+    elif type_ is 'd':
+        ls_cmd = 'ls -ald ' + args.git_root_path + target
+    else:
+        print('Unsupported Type')
+        # TODO Raise exception...
+    print('ls cmd: %s' % ls_cmd)
+    print('target: %s' % target)
     cmd = create_ssh_command(args.port,
                              args.host_address,
                              args.public_key,
                              False,
-                             'ls -al ' + args.git_root_path + filename)
+                             ls_cmd)
     ls_output = check_output(cmd)
-    permission, _, _ = ls_parser(ls_output)
+    permission, owner, group = ls_parser(ls_output)
     permission = permission_parser(permission)
     change_file_permission(args.host_address,
                            args.port,
                            args.git_root_path,
-                           filename, '777', args.public_key)
-    return permission
+                           target, '777', args.public_key)
+    return permission, owner, group
 
 def ls_parser(ls_output):
     permission, _, owner, group, _, _, _, _, _, _ = regx_split('\s+', ls_output)
