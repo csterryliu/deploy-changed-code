@@ -103,7 +103,8 @@ def deal_with_add(args, filename):
                                 False,
                                 'ls ' + args.git_root_path + filename)
         ls_output = check_output(cmd)
-        print(ls_output.rstrip() + ': already exists.')
+        print(ls_output.rstrip() + ': already exists. Replace it.')
+        deal_with_modification(args, filename)
     except CalledProcessError:
         should_recover_permission = False
         dirpath = ''
