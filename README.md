@@ -9,7 +9,7 @@ It is useful if you love to use a text editor (e.g. Atom, Sublime Text, etc.) to
 
 ## Usage Example ##
 ```
-deploy.py someone@ip_address /home/someone/the/git/root/path/of/your/code/ --port 5000 --force
+deploy.py someone@ip_address /the/remote/git/root/path/of/your/code/ --port 5000 --force
 ```
 
 ## License ##
