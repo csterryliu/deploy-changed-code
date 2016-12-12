@@ -112,7 +112,9 @@ def deal_with_add(args, filename):
             path_list = filename.rsplit('/', 1)
             if len(path_list) > 1:
                 dirpath = path_list[0]
-            dir_permission, dir_owner, dir_group = seize_control(args, dirpath, 'd')
+            dir_info = seize_control(args, dirpath, 'd')
+            if not dir_info:
+                return
             should_recover_permission = True
         print('scp ' + filename + ' to ' + args.git_root_path)
         scp(args.port,
@@ -120,18 +122,23 @@ def deal_with_add(args, filename):
             args.host_address + ':' + args.git_root_path + filename,
             args.public_key)
         change_file_owngrp(args.host_address,
-                               args.port,
-                               args.git_root_path,
-                               filename, dir_owner, dir_group, args.public_key)
+                           args.port,
+                           args.git_root_path,
+                           filename, dir_info['owner'],
+                           dir_info['group'],
+                           args.public_key)
         if should_recover_permission:
             change_file_permission(args.host_address,
                                    args.port,
                                    args.git_root_path,
-                                   dirpath, str(dir_permission), args.public_key)
+                                   dirpath,
+                                   str(dir_info['permission']),
+                                   args.public_key)
+    return
 
 
 def seize_control(args, target, type_):
-    permission = 0
+    target_info = {}
     if type_ is 'f':
         ls_cmd = 'ls -al ' + args.git_root_path + target
     elif type_ is 'd':
@@ -144,14 +151,20 @@ def seize_control(args, target, type_):
                              args.public_key,
                              False,
                              ls_cmd)
-    ls_output = check_output(cmd)
-    permission, owner, group = ls_parser(ls_output)
-    permission = permission_parser(permission)
-    change_file_permission(args.host_address,
-                           args.port,
-                           args.git_root_path,
-                           target, '777', args.public_key)
-    return permission, owner, group
+    try:
+        ls_output = check_output(cmd)
+        permission, owner, group = ls_parser(ls_output)
+        permission = permission_parser(permission)
+        change_file_permission(args.host_address,
+                               args.port,
+                               args.git_root_path,
+                               target, '777', args.public_key)
+        target_info['permission'] = permission
+        target_info['owner'] = owner
+        target_info['group'] = group
+    except CalledProcessError:
+        print('No such file or directory')
+    return target_info
 
 def ls_parser(ls_output):
     permission, _, owner, group, _, _, _, _, _, _ = regx_split('\s+', ls_output)
