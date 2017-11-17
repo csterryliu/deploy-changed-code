@@ -147,9 +147,12 @@ def deal_with_add(args, filename):
         should_recover_permission = False
         dirpath = ''
         if args.force:
-            path_list = filename.rsplit('/', 1)
-            if len(path_list) > 1:
-                dirpath = path_list[0]
+            if dst_root_path == args.git_root_path:
+                path_list = filename.rsplit('/', 1)
+                if len(path_list) > 1:
+                    dirpath = path_list[0]
+            else:
+                dirpath = ''
             dir_permission, dir_owner, dir_group = seize_control(args, dst_root_path, dirpath, 'd')
             should_recover_permission = True
         print('scp ' + filename + ' to ' + dst_root_path)
