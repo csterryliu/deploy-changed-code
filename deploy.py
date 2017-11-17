@@ -9,7 +9,7 @@ def main():
     global sparse_map
     args = process_args()
     sparse_map = construct_sparse_map(args)
-    print destination_root_path(args, 'gsp_contents/Phansco/sportal_package/js/Chart.bundle.min.js')
+    # print destination_root_path(args, 'gsp_contents/Phansco/sportal_package/js/Chart.bundle.min.js')
     output = check_output(['git', 'status', '--porcelain', '-uno'])
     filelist = output.split('\n')
     for staged_file in filelist:
@@ -32,9 +32,9 @@ def construct_sparse_map(args):
 def destination_root_path(args, filename):
     import os.path
     if not args.spd_root_path:
-        print 'yyy'
+    #    print 'yyy'
         return args.git_root_path, filename
-    print 'xxx'
+    # print 'xxx'
     pdir = os.path.dirname(filename)
     if pdir in sparse_map.keys():
         return args.spd_root_path + sparse_map[pdir] + '/', filename.split('/')[-1]
