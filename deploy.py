@@ -3,8 +3,13 @@ from subprocess import check_output, call, CalledProcessError
 from re import split as regx_split
 import argparse
 
+sparse_map = None
+
 def main():
+    global sparse_map
     args = process_args()
+    sparse_map = construct_sparse_map(args)
+    print destination_root_path(args, 'gsp_contents/Phansco/sportal_package/js/Chart.bundle.min.js')
     output = check_output(['git', 'status', '--porcelain', '-uno'])
     filelist = output.split('\n')
     for staged_file in filelist:
@@ -12,6 +17,28 @@ def main():
             if not deploy_code(staged_file, args):
                 print('An error occurs. Going out.')
                 return
+
+def construct_sparse_map(args):
+    if not args.spd_root_path:
+        return None
+    output = {}
+    with open(args.spd_config) as f:
+        for line in f:
+            line = line.strip()
+            src_folder, dst_folder = line.split('->')
+            output[src_folder] = dst_folder
+    return output
+
+def destination_root_path(args, filename):
+    import os.path
+    if not args.spd_root_path:
+        print 'yyy'
+        return args.git_root_path, filename
+    print 'xxx'
+    pdir = os.path.dirname(filename)
+    if pdir in sparse_map.keys():
+        return args.spd_root_path + sparse_map[pdir] + '/', filename.split('/')[-1]
+
 
 def process_args():
     arg_parser = argparse.ArgumentParser(description='deploy.py')
@@ -34,6 +61,12 @@ def process_args():
                             default='',
                             metavar='Public Key',
                             help='The public key for loggin in.')
+    arg_parser.add_argument('--spd_root_path',
+                            action='store',
+                            default=None)
+    arg_parser.add_argument('--spd_config',
+                            action='store',
+                            default=None)
 
     return arg_parser.parse_args()
 
@@ -56,10 +89,13 @@ def deploy_code(staged_file, args):
     return True
 
 def deal_with_renaming(args, filename, new_filename):
+    dst_root_path, filename = destination_root_path(args, filename)
+    if dst_root_path != args.git_root_path:
+        new_filename = new_filename.split('/')[-1]
     prefix_sudo = ''
     should_recover_permission = False
     if args.force:
-        original_permission, _, _ = seize_control(args, filename, 'f')
+        original_permission, _, _ = seize_control(args, dst_root_path, filename, 'f')
         prefix_sudo = 'sudo su - -c '
         should_recover_permission = True
     print('Rename ' + filename + ' to ' + new_filename)
@@ -67,41 +103,43 @@ def deal_with_renaming(args, filename, new_filename):
                              args.host_address,
                              args.public_key,
                              True,
-                             prefix_sudo + '"mv ' + args.git_root_path + filename + ' ' + args.git_root_path + new_filename +'"')
+                             prefix_sudo + '"mv ' + dst_root_path + filename + ' ' + dst_root_path + new_filename +'"')
     call(cmd)
     filename = new_filename
 
     if should_recover_permission:
         change_file_permission(args.host_address,
                                args.port,
-                               args.git_root_path,
+                               dst_root_path,
                                filename, str(original_permission),
                                args.public_key)
 
 def deal_with_modification(args, filename):
+    dst_root_path, dst_filename = destination_root_path(args, filename)
     should_recover_permission = False
     if args.force:
-        original_permission, _, _ = seize_control(args, filename, 'f')
+        original_permission, _, _ = seize_control(args, dst_root_path, dst_filename, 'f')
         should_recover_permission = True
-    print('scp ' + filename + ' to ' + args.git_root_path)
+    print('scp ' + filename + ' to ' + dst_root_path)
     scp(args.port,
         filename,
-        args.host_address + ':' + args.git_root_path + filename,
+        args.host_address + ':' + dst_root_path + dst_filename,
         args.public_key)
     if should_recover_permission:
         change_file_permission(args.host_address,
                                args.port,
-                               args.git_root_path,
-                               filename, str(original_permission),
+                               dst_root_path,
+                               dst_filename, str(original_permission),
                                args.public_key)
 
 def deal_with_add(args, filename):
+    dst_root_path, dst_filename = destination_root_path(args, filename)
     try:
         cmd = create_ssh_command(args.port,
                                 args.host_address,
                                 args.public_key,
                                 False,
-                                'ls ' + args.git_root_path + filename)
+                                'ls ' + dst_root_path + dst_filename)
         ls_output = check_output(cmd)
         print(ls_output.rstrip() + ': already exists. Replace it.')
         deal_with_modification(args, filename)
@@ -112,30 +150,30 @@ def deal_with_add(args, filename):
             path_list = filename.rsplit('/', 1)
             if len(path_list) > 1:
                 dirpath = path_list[0]
-            dir_permission, dir_owner, dir_group = seize_control(args, dirpath, 'd')
+            dir_permission, dir_owner, dir_group = seize_control(args, dst_root_path, dirpath, 'd')
             should_recover_permission = True
-        print('scp ' + filename + ' to ' + args.git_root_path)
+        print('scp ' + filename + ' to ' + dst_root_path)
         scp(args.port,
             filename,
-            args.host_address + ':' + args.git_root_path + filename,
+            args.host_address + ':' + dst_root_path + dst_filename,
             args.public_key)
         change_file_owngrp(args.host_address,
                                args.port,
-                               args.git_root_path,
-                               filename, dir_owner, dir_group, args.public_key)
+                               dst_root_path,
+                               dst_filename, dir_owner, dir_group, args.public_key)
         if should_recover_permission:
             change_file_permission(args.host_address,
                                    args.port,
-                                   args.git_root_path,
+                                   dst_root_path,
                                    dirpath, str(dir_permission), args.public_key)
 
 
-def seize_control(args, target, type_):
+def seize_control(args, root_path, target, type_):
     permission = 0
     if type_ is 'f':
-        ls_cmd = 'ls -al ' + args.git_root_path + target
+        ls_cmd = 'ls -al ' + root_path + target
     elif type_ is 'd':
-        ls_cmd = 'ls -ald ' + args.git_root_path + target
+        ls_cmd = 'ls -ald ' + root_path + target
     else:
         print('Unsupported Type')
         # TODO Raise exception...
@@ -149,7 +187,7 @@ def seize_control(args, target, type_):
     permission = permission_parser(permission)
     change_file_permission(args.host_address,
                            args.port,
-                           args.git_root_path,
+                           root_path,
                            target, '777', args.public_key)
     return permission, owner, group
 
@@ -173,20 +211,20 @@ def permission_parser(permission_str):
         permission += permission_map[permission_str[i]]
     return permission
 
-def change_file_permission(host_address, port, git_root_path, filename, permission_str, public_key):
+def change_file_permission(host_address, port, root_path, filename, permission_str, public_key):
     cmd = create_ssh_command(port,
                              host_address,
                              public_key,
                              True,
-                             'sudo su - -c "chmod ' + permission_str + ' ' + git_root_path + filename + '"')
+                             'sudo su - -c "chmod ' + permission_str + ' ' + root_path + filename + '"')
     call(cmd)
 
-def change_file_owngrp(host_address, port, git_root_path, filename, own_str, grp_str, public_key):
+def change_file_owngrp(host_address, port, root_path, filename, own_str, grp_str, public_key):
     cmd = create_ssh_command(port,
                              host_address,
                              public_key,
                              True,
-                             'sudo su - -c "chown ' + own_str + ':' + grp_str + ' ' + git_root_path + filename + '"')
+                             'sudo su - -c "chown ' + own_str + ':' + grp_str + ' ' + root_path + filename + '"')
     call(cmd)
 
 def create_ssh_command(port, host_address, public_key, is_sudo, command):
